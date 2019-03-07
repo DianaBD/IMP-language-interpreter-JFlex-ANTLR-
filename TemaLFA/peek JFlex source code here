@@ -1,0 +1,489 @@
+import java.util.*;
+import java.io.*;
+
+%%
+ 
+%class HelloLexer
+%line
+%int
+
+%{
+    int insideLogicPar = 0;
+
+    MainNode root = null;
+
+    // pt valorile variabilelor
+    public HashMap<String,Integer> identifiersTable = new HashMap<String,Integer>();
+
+    // pt lista initiala de variabile
+    public LinkedList<String> variables = new LinkedList<>();
+
+  	Stack<Expression> old_stack = new Stack<>();
+    Stack<Expression> stack = new Stack<>();
+
+  	Expression get_nth_element_from_stack(int element_number) {
+        Stack<Expression> temp_stack = new Stack<>();
+
+        if (element_number > stack.size()) {
+            return null;
+        }
+
+        for (int j = 0; j < element_number; ++j) {
+            temp_stack.push(stack.pop());
+        }
+
+        Expression res = temp_stack.peek();
+
+        for (int j = 0; j < element_number; ++j) {
+            stack.push(temp_stack.pop());
+        }
+        return res;
+    }
+
+    Stack<Expression> reverseElemsUntilSymbol(Stack<Expression> stack, String symbol){
+        ArrayList<Expression> temp = new ArrayList<>();
+
+        while (!(stack.peek().symbol.equals(symbol))) {
+            temp.add((Expression)stack.pop());
+        }
+
+        for(int i = 0; i < temp.size(); i++)
+            stack.push(temp.get(i));
+
+        return stack;
+    }
+
+
+    Stack<Expression> doAllPlus(Stack<Expression> stack){
+        Stack<Expression> temp = new Stack<>();
+        while (!(stack.peek().symbol.equals("=")) && !(stack.peek().symbol.equals("("))) {
+            if(stack.peek().symbol.equals("+")){
+                Expression e1, e2;
+
+                e1 = temp.pop();
+                stack.pop(); // scot /
+                e2 = stack.pop();
+
+                stack.push(new Plus(e1,e2));
+            }
+            else {
+                temp.push(stack.pop());
+            }
+        }
+        while (!(temp.isEmpty())){
+            stack.push(temp.pop());
+        }
+        return stack;
+    }
+
+    Stack<Expression> doAllDivs(Stack<Expression> stack) {
+        Stack<Expression> temp = new Stack<>();
+        while (!(stack.peek().symbol.equals("=")) && !(stack.peek().symbol.equals("("))) {
+            if(stack.peek().symbol.equals("/")){
+                Expression e1, e2;
+
+                e1 = temp.pop();
+                stack.pop();// scot /
+                e2 = stack.pop();
+
+                stack.push(new Div(e1,e2 ));
+            }
+            else {
+                temp.push(stack.pop());
+            }
+        }
+        while (!(temp.isEmpty())){
+            stack.push(temp.pop());
+        }
+        return stack;
+    }
+
+    Stack<Expression> doAllGreater(Stack<Expression> stack) {
+        Stack<Expression> temp = new Stack<>();
+        while (!(stack.peek().symbol.equals("("))) {
+            if(stack.peek().symbol.equals(">")){
+
+                Expression e1, e2;
+                e1 = temp.pop();
+                stack.pop(); // scot /
+                e2 = stack.pop();
+
+                stack.push(new Greater(e1,e2 ));
+            }
+            else {
+                temp.push(stack.pop());
+            }
+        }
+        while (!(temp.isEmpty())){
+            stack.push(temp.pop());
+        }
+        return stack;
+    }
+
+    Stack<Expression> doAllNot(Stack<Expression> stack) {
+        Stack<Expression> temp = new Stack<>();
+        while (!(stack.peek().symbol.equals("("))) {
+            if(stack.peek().symbol.equals("!")){
+                Expression e;
+
+                stack.pop();
+                e = stack.pop();
+                stack.push(new Not(e));
+            }
+            else {
+                temp.push(stack.pop());
+            }
+        }
+        while (!(temp.isEmpty())){
+            stack.push(temp.pop());
+        }
+        return stack;
+    }
+
+    Stack<Expression> doAllAnd(Stack<Expression> stack) {
+        Stack<Expression> temp = new Stack<>();
+        while (!(stack.peek().symbol.equals("("))) {
+            if(stack.peek().symbol.equals("&&")){
+                Expression e1, e2;
+
+                e1 = temp.pop();
+                stack.pop();
+                e2 = stack.pop();
+
+                stack.push(new And(e1,e2));
+            }
+            else {
+                temp.push(stack.pop());
+            }
+        }
+        while (!(temp.isEmpty())){
+            stack.push(temp.pop());
+        }
+        return stack;
+    }
+
+    void doAritmPar() {
+        stack = reverseElemsUntilSymbol(stack,"(");
+        stack = doAllDivs(stack);
+        stack = doAllPlus(stack);
+
+        Expression e = null;
+        e = stack.pop();
+        stack.pop(); // scot (
+       
+        stack.push(new AritmPar(e));
+    }
+
+    void doLogicPar() {
+        stack = reverseElemsUntilSymbol(stack,"(");
+        stack = doAllDivs(stack);
+        stack = doAllPlus(stack);
+        stack = doAllGreater(stack);
+        stack = doAllNot(stack);
+        stack = doAllAnd(stack);
+
+        Expression e = stack.pop();
+        stack.pop();
+
+        stack.push(new LogicPar(e));
+    }
+
+    Expression coolAssignment() {
+        stack = reverseElemsUntilSymbol(stack,"=");
+        stack = doAllDivs(stack);
+        stack = doAllPlus(stack);
+        
+        Variable v = null;
+        Expression e = null;
+        
+        e = stack.pop();
+        stack.pop(); // scot =
+        v = (Variable)stack.pop();
+
+        StmtList old_st = null;
+        int main = 0;
+        int block = 0;
+        if(stack.peek() instanceof MainNode){
+            old_st = (MainNode)stack.pop();
+            main = 1;
+        } else {
+            old_st = (Block)stack.pop();
+            block = 1;
+        }
+
+        
+        
+        LinkedList<Expression> new_ls = new LinkedList<>();
+        new_ls.add(new Assign(v,e,root));
+
+        StmtList st = null;
+        if(main == 1) 
+            st = new SequenceNode(new_ls);
+        if(block == 1)
+            st = new SequenceNode(new_ls);
+
+        old_st.elems.add(st);
+        if(main == 1){
+            return new MainNode(old_st.elems, ((MainNode)old_st).idTable, ((MainNode)old_st).error_unassigned_var, ((MainNode)old_st).error_div_by_zero);
+        }
+        if(block == 1)
+            return new Block(old_st.elems);
+
+        return null;
+    }
+
+    String lookBackToFindOutWhatToDo(Stack<Expression> stack) {
+        
+        if(stack.peek() instanceof Block){
+            if(get_nth_element_from_stack(2) instanceof Block){
+                if(get_nth_element_from_stack(3) instanceof LogicPar){
+                    if(get_nth_element_from_stack(4) instanceof IfBlock)
+                        return "if";
+                }
+            }
+            if((get_nth_element_from_stack(2) instanceof SequenceNode) || (get_nth_element_from_stack(2) instanceof MainNode) )
+                return "block";
+        }
+
+        if(get_nth_element_from_stack(1) instanceof Block){
+            if(get_nth_element_from_stack(2) instanceof LogicPar){
+                if(get_nth_element_from_stack(3) instanceof WhileBlock){
+                    return "while";
+                }
+                    
+            }
+
+        }
+
+        return "";
+    }
+%}
+
+%eof{
+    
+%eof}
+
+If          = "if"
+Else        = "else"
+While       = "while"
+
+open_par    = "("
+close_par   = ")"
+
+// spatii libere
+Space       = "\t" | " "
+EndOfLine   = "\r"?"\n"
+
+
+
+// primitive 
+Digit       = (1|2|3|4|5|6|7|8|9)*
+Number      = {Digit}(0|{Digit})*|0
+String      = (a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z)*
+Var         = {String}
+AVal        = {Number}
+BVal        = "true" | "false"
+
+VarList     = ({Var}," ")*{Var};
+
+assign      = "="
+not         = "!"
+greater     = ">"
+plus        = "+"
+div         = "/"
+and         = "&&"
+semicolon   = ";"
+open_block  = "{"
+close_block = "}"
+
+
+
+
+ 
+%state PROG LIST STMT SAVEWHILEBLOCK TEST
+
+%%
+
+<YYINITIAL> {
+    int         {   
+        yypushback(yylength());
+        yybegin(PROG);  
+    }
+    {Space}     {}
+    {EndOfLine} {}
+    .           {}
+}
+    
+<PROG> {
+    {VarList}   {   
+        yypushback(yylength());
+        yybegin(LIST);
+    }
+    {EndOfLine} {}
+    .           {}
+} 
+
+<LIST> {
+    {Var}       { identifiersTable.put(yytext(), null); }
+    ;           {   
+        LinkedList<Expression> ls = new LinkedList<>();
+        root = new MainNode(ls,identifiersTable, 0, 0);
+        stack.push(root);
+        yybegin(STMT);
+    }
+    {EndOfLine} {}
+    .           {}
+}     
+
+<STMT> {
+    {If}        {   
+        LinkedList<Expression> ls = new LinkedList<>();
+        stack.push(new IfBlock(ls));
+    }
+    {Else}      {}
+    {While}     {   
+        LinkedList<Expression> ls = new LinkedList<>();
+        stack.push(new WhileBlock(ls));
+    }
+    {assign}    {  stack.push(new Symbol("=")); }
+    {semicolon} {
+        Expression x = coolAssignment(); // scot ce am pe stiva pana dau de "(" si formez elementul
+        stack.push(x); // pun elementul nou format la loc pe stiva
+    }
+    {open_par}  { stack.push(new Symbol("(")); }
+    {not}       { stack.push(new Symbol("!")); }
+    {greater}   { stack.push(new Symbol(">")); }
+    {plus}      { stack.push(new Symbol("+")); }
+    {div}       { stack.push(new Symbol("/")); }
+    {and}       { stack.push(new Symbol("&&")); }
+    {AVal}      { stack.push(new Number(yytext(), yyline, root)); }
+    {BVal}      { stack.push(new Boolean(yytext())); 
+                  insideLogicPar = 1;
+                }
+    
+    {close_par} {
+        int i = 2;
+        while( !(get_nth_element_from_stack(i) instanceof IfBlock) && !(get_nth_element_from_stack(i) instanceof WhileBlock) && !(get_nth_element_from_stack(i).symbol.equals("="))) {
+            Expression e = get_nth_element_from_stack(i);
+            if (e.symbol.equals("!") || e.symbol.equals(">") || e.symbol.equals("&&"))
+                insideLogicPar = 1;
+            i++;
+        }
+
+        if(insideLogicPar == 1){
+            doLogicPar();
+            insideLogicPar = 0;
+        }
+        else {
+            doAritmPar();
+        } 
+    }
+
+    {open_block} {  
+        LinkedList<Expression> ls = new LinkedList<>();
+        stack.push(new Block(ls));
+    }
+    {close_block}   {  
+        if (lookBackToFindOutWhatToDo(stack).equals("if")) {
+            Block ebl = (Block)stack.pop();
+            Block ibl = (Block)stack.pop();
+            LogicPar cond = (LogicPar)stack.pop();
+
+            IfBlock ifbl = (IfBlock)stack.pop();
+
+            ifbl.elems.add(cond);
+            ifbl.elems.add(ibl);
+            ifbl.elems.add(ebl);
+
+            StmtList old_st;
+            int main = 0;
+            if(stack.peek() instanceof MainNode){
+                old_st = (MainNode)stack.pop();
+                main = 1;
+            } 
+            else
+                old_st = (Block)stack.pop();
+
+            LinkedList<Expression> new_ls = new LinkedList<>();
+            new_ls.add(ifbl);
+            StmtList st = new SequenceNode(new_ls);
+
+            //if_conditions_stack.pop();
+
+            old_st.elems.add(st);
+            if(main == 1)
+                stack.push(new MainNode(old_st.elems, ((MainNode)old_st).idTable, ((MainNode)old_st).error_unassigned_var, ((MainNode)old_st).error_div_by_zero));
+            else
+                stack.push(new Block(old_st.elems));
+        }
+        else {
+            if (lookBackToFindOutWhatToDo(stack).equals("while")) {
+                Block bl = (Block)stack.pop();
+                LogicPar cond = (LogicPar)stack.pop();
+
+                WhileBlock wbl = (WhileBlock)stack.pop();
+
+                wbl.elems.add(cond);
+                wbl.elems.add(bl);
+
+                StmtList old_st;
+                int main = 0;
+                if(stack.peek() instanceof MainNode){
+                    old_st = (MainNode)stack.pop();
+                    main = 1;
+                } 
+                else
+                    old_st = (Block)stack.pop();
+
+                LinkedList<Expression> new_ls = new LinkedList<>();
+                new_ls.add(wbl);
+                StmtList st = new SequenceNode(new_ls);
+
+                old_st.elems.add(st);
+                if(main == 1)
+                    stack.push(new MainNode(old_st.elems, ((MainNode)old_st).idTable, ((MainNode)old_st).error_unassigned_var, ((MainNode)old_st).error_div_by_zero));
+                else
+                    stack.push(new Block(old_st.elems));
+            }
+
+            else {
+                if(lookBackToFindOutWhatToDo(stack).equals("block")) { // bloc fara if sau while;
+                    Block bl = (Block)stack.pop();
+                    StmtList old_st;
+                    int main = 0;
+                    if(stack.peek() instanceof MainNode){
+                        old_st = (MainNode)stack.pop();
+                        main = 1;
+                    } 
+                    else
+                        old_st = (Block)stack.pop();
+
+                    LinkedList<Expression> new_ls = new LinkedList<>();
+                    new_ls.add(bl);
+                    StmtList st = new SequenceNode(new_ls);
+
+                    old_st.elems.add(st);
+                    if(main == 1)
+                        stack.push(new MainNode(old_st.elems, ((MainNode)old_st).idTable, ((MainNode)old_st).error_unassigned_var, ((MainNode)old_st).error_div_by_zero));
+                    else
+                        stack.push(new Block(old_st.elems));
+                }
+            }
+        }
+    }
+
+    {Var}       { 
+        if(!identifiersTable.containsKey(yytext())){
+            ((MainNode)stack.get(0)).error_unassigned_var = yyline + 1;
+        }
+        stack.push(new Variable(yytext(),yyline, root)); 
+    }
+
+    {Space}     {}
+    {EndOfLine} {}
+    . {}
+}
+
+. {}
+
+
