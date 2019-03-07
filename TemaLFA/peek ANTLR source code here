@@ -1,0 +1,197 @@
+
+grammar Tema;
+
+@header {
+import java.io.*;
+import java.util.*;
+}
+
+main  
+	returns [static MainNode m]
+	locals [
+		ArrayList<Expression> stack = new ArrayList<Expression>();
+		
+	]
+		 : {$stack.add(0, new MainNode($stack,""));}
+		 prog { $m = (MainNode)$stack.get(0); };
+
+number 	 : NUMBER ;
+bool 	 : 'true' | 'false' ;
+variable : STRING ;
+
+prog	: stmt {
+				StmtList s1 = (StmtList)$main::stack.remove(0);
+				StmtList s2 = (StmtList)$main::stack.remove(0);
+				s2.elems.add(s1.elems.pop());
+				$main::stack.add(0,s2);
+				while($main::stack.size() > 1) {
+					StmtList child = (StmtList)$main::stack.remove(0);
+					StmtList parent = (StmtList)$main::stack.remove(0);
+					parent.elems.add(child);
+					$main::stack.add(0,parent);
+				}
+			}
+		;
+
+
+ifblock	: 'if' bexpr block 'else' block { 
+				Block ebl = (Block)$main::stack.remove(0);
+				Block ibl = (Block)$main::stack.remove(0);
+				LogicPar cond = (LogicPar) $main::stack.remove(0);
+
+				ArrayList<Expression> arl = new ArrayList<Expression>();
+				arl.add(0,ebl);
+				arl.add(0,ibl);
+				arl.add(0,cond);
+
+				$main::stack.add(0,new IfBlock(arl, ""));
+			}
+		;
+
+whileblock : 'while' bexpr block {
+				Block wbl = (Block)$main::stack.remove(0);
+				LogicPar cond = (LogicPar) $main::stack.remove(0);
+
+				ArrayList<Expression> arl = new ArrayList<Expression>();
+				arl.add(0,wbl);
+				arl.add(0,cond);
+
+				$main::stack.add(0,new WhileBlock(arl, ""));
+			}
+		;
+
+block	: '{''}' {
+				ArrayList<Expression> arl = new ArrayList<Expression>();
+				$main::stack.add(0,new Block(arl, "")); }
+			
+		| '{'stmt'}' { 
+				ArrayList<Expression> arl = new ArrayList<Expression>();
+
+				if ((!($main::stack.get(1) instanceof LogicPar) && !($main::stack.get(1) instanceof Block))) {
+
+					StmtList s1 = (StmtList)$main::stack.remove(0);
+					StmtList s2 = (StmtList)$main::stack.remove(0);
+					s2.elems.add(s1.elems.pop());
+					$main::stack.add(0,s2);
+				}
+				
+				while(!($main::stack.get(1) instanceof LogicPar) && !($main::stack.get(1) instanceof Block)){
+					StmtList child = (StmtList)$main::stack.remove(0);
+					StmtList parent = (StmtList)$main::stack.remove(0);
+					parent.elems.add(child);
+					$main::stack.add(0,parent);
+				}
+				arl.add($main::stack.remove(0));
+				$main::stack.add(0,new Block(arl, "")); 
+			}
+	;
+
+stmt	: 
+		s1=stmt s2=stmt  { }
+		| assignment { 
+				
+				ArrayList<Expression> arl = new ArrayList<Expression>();
+				arl.add($main::stack.remove(0));
+				$main::stack.add(0,new StmtList(arl,""));
+			}
+		| ifblock { 
+				ArrayList<Expression> arl = new ArrayList<Expression>();
+				arl.add($main::stack.remove(0));
+				$main::stack.add(0,new StmtList(arl,""));
+			}
+		| whileblock { 
+				ArrayList<Expression> arl = new ArrayList<Expression>();
+				arl.add($main::stack.remove(0));
+				$main::stack.add(0,new StmtList(arl,""));
+			}		
+	;
+
+assignment 	: x=variable ASSIGN aexpr ';'{
+				$main::stack.add(0,new Assign(new Variable($x.text),$main::stack.remove(0),"")); }
+	;
+
+aexpr	: '('aexpr')' {
+				$main::stack.add(0,new AritmPar($main::stack.remove(0))); }
+		| aexpr '/' aexpr {
+				Expression e2 = $main::stack.remove(0);
+				Expression e1 = $main::stack.remove(0);
+				$main::stack.add(0,new Div(e1, e2)); }
+		| aexpr '+' aexpr {
+				Expression e2 = $main::stack.remove(0);
+				Expression e1 = $main::stack.remove(0);
+				$main::stack.add(0,new Plus(e1, e2)); }
+		| number {
+				$main::stack.add(0,new Number($number.text)); }
+		| variable {
+				$main::stack.add(0,new Variable($variable.text)); }
+	;
+
+bexpr	: '('bexpr')' {
+				$main::stack.add(0,new LogicPar($main::stack.remove(0))); }
+		| '!'bexpr {
+				$main::stack.add(0,new Not($main::stack.remove(0))); }
+		| aexpr '>' aexpr {
+				Expression e2 = $main::stack.remove(0);
+				Expression e1 = $main::stack.remove(0);
+				$main::stack.add(0,new Greater(e1, e2)); }
+		| bexpr '&&' bexpr {
+				Expression e2 = $main::stack.remove(0);
+				Expression e1 = $main::stack.remove(0);
+				$main::stack.add(0,new And(e1, e2)); }
+		| bool {
+				$main::stack.add(0,new Boolean($bool.text)); }
+	;
+
+LIST 	: ('int ' (STRING DEL* WS*)+ ';') -> skip ; 
+STRING 	: [a-z]+ ;             // match lower-case identifiers
+NUMBER 	: (([1-9]+)[0-9]*) | '0' ;
+
+ASSIGN 	: '=';
+WS 		: [ \t\r\n]+ -> skip ; // skip spaces, tabs, newlines
+DEL 	: [,] ;
+
+////////////// Tema.g4 file ends here ////////////////
+
+///////////// here is MyMain.java file ///////////////
+
+import java.io.*;
+import java.util.*;
+import org.antlr.v4.runtime.*;
+import org.antlr.v4.runtime.tree.*;
+
+public class MyMain {
+	
+	public static void main (String[] args) throws IOException {
+		CharStream input = CharStreams.fromFileName("test/in/8.in");
+		TemaLexer lexer = new TemaLexer(input);
+
+		CommonTokenStream tokenStream = null;
+        TemaParser parser = null;
+        ParserRuleContext globalTree = null;
+		// Obtinem tokenii din input
+        tokenStream = new CommonTokenStream(lexer);
+
+        //TemaParser.MainContext ctx = getRuleContext;
+        //System.out.println(ctx.getPayload());
+
+        // Definim Parser-ul
+        parser = new TemaParser(tokenStream);
+        //TemaParser.MainContext result = $main::stack.get(0);
+        
+
+        // Incepem parsarea
+        ParserRuleContext tree = parser.main();
+
+        MainNode mm = TemaParser.MainContext.m;
+
+        try {
+			  BufferedWriter writer = new BufferedWriter(new FileWriter("arbore"));
+			    writer.write(mm.show());
+			    writer.close();
+			}
+			catch(IOException e) {
+			  e.printStackTrace();
+			}
+	}
+}
+
